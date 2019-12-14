@@ -1,0 +1,86 @@
+<html>
+<head>
+	<meta charset="utf-8">
+	<style>
+		body {
+			background-color: #000;
+			color: #fff;
+		}
+	</style>
+</head>
+<body>
+	<pre id="term"></pre>
+	$ uni <input id="input"> (^L to clear output)
+
+	<script src="wasm_exec.js"></script>
+	<script>
+		var hist = [], histIndex = 0;
+		window.input.addEventListener('keydown', function(e) {
+			if (e.ctrlKey && e.keyCode === 76) {  // ^L
+				e.preventDefault();
+				window.term.innerText = '';
+				return;
+			}
+
+			//console.log(e.keyCode);
+			if (e.keyCode === 38) {  // Arrow up
+				e.preventDefault();
+				this.value = hist[hist.length - histIndex - 1] || '';
+				if (histIndex < hist.length - 1)
+					histIndex++;
+				return;
+			}
+			if (e.keyCode === 40) {  // Arrow down
+				e.preventDefault();
+				this.value = hist[hist.length - histIndex] || '';
+				if (histIndex > 0)
+					histIndex--;
+				return;
+			}
+
+			if (e.keyCode !== 13)  // Enter
+				return;
+
+			e.preventDefault();
+
+			hist.push(this.value);
+			var cmd = this.value.split(' ');
+			this.value = '';
+			if (cmd.length === 0)
+				return;
+			if (cmd[0] !== 'uni')
+				cmd = ['uni'].concat(cmd);
+
+			run_uni(cmd);
+			window.scrollTo(0, document.body.scrollHeight);
+		});
+
+		var run_uni = function(cmd) {
+			const go = new Go();
+			go.argv = cmd;
+
+			let outputBuf = "";
+			const decoder = new TextDecoder("utf-8");
+			global.fs.writeSync = function(fd, buf) {
+				outputBuf += decoder.decode(buf);
+
+				const nl = outputBuf.lastIndexOf("\n");
+				if (nl != -1) {
+					window.term.innerText += outputBuf.substr(0, nl -1);
+					outputBuf = outputBuf.substr(nl + 1);
+				}
+				return buf.length;
+			};
+
+			go.run(wasm);
+
+			// TODO: this loads and compiled from remote on every command.
+			// Should probably use:
+			// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/instantiate
+			WebAssembly.instantiateStreaming(fetch('uni.wasm'), go.importObject).then((result) => {
+				go.run(result.instance);
+			});
+		};
+	</script>
+</body>
+</html>
